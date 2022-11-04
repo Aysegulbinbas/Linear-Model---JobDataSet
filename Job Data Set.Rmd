@@ -1,0 +1,211 @@
+---
+title: "Linear Model - Job Data Set"
+author: "AyşegülBinbaş"
+date: "04 11 2022"
+output: word_document
+---
+
+
+
+```{r}
+
+
+library("readxl")
+Job.model.data <- read_excel("job_model_building_data.xlsx")
+Job.validation.data <- read_excel("job_validation_data.xlsx")
+
+#a:
+
+str(Job.model.data)
+str(Job.validation.data)
+summary(Job.model.data)
+summary(Job.validation.data)
+
+library(corrplot)
+library(gridExtra)
+library(ggplot2)
+
+#To look at the relationships between the predictors and the response:
+
+options(repr.plot.width=6, repr.plot.height=6)
+p1 <- ggplot(Job.model.data, aes(x1,y)) + geom_point()
+p2 <- ggplot(Job.model.data, aes(x2,y)) + geom_point()
+p3 <- ggplot(Job.model.data, aes(x3,y)) + geom_point()
+p4 <- ggplot(Job.model.data, aes(x4,y)) + geom_point()
+grid.arrange(p1, p2, p3, p4, ncol=3)
+
+# As can be seen from the graphs, there exists clear positive relationship between x4 and y,also x3 and y.
+# Also, there are positiverelationship btw other x variables and response,but not so clear.
+
+
+num.association <- cor(Job.model.data)
+num.association
+options(repr.plot.width=3, repr.plot.height=3)
+corrplot(num.association)
+library(GGally)
+ggpairs(Job.model.data,title="Correlogram")
+
+#From the correlation matrix and plot we can say that we may have  multicollinearity problem.
+
+
+
+
+#b:
+
+
+full.model <- lm(y~., Job.model.data)
+summary(full.model)
+
+#According to result of full.model, x2 is not significant.
+#Also, model p-value: 5.262e-14,so model is significant.Adjusted R-squared is equal to 0.9555.
+#Non significant terms can be aside from the model.Also,there exists multicollinearty to solve this problem,we can chose some of them among variables.
+
+
+
+#c:
+library(leaps)
+
+best <- function(model, ...) 
+{
+  subsets <- regsubsets(formula(model), model.frame(model), ...)
+  subsets <- with(summary(subsets),
+                  cbind(p = as.numeric(rownames(which)), which, adjr2))
+  
+  return(subsets)
+}  
+
+round(best(full.model, nbest = 6), 4)
+
+
+#When we increased the number of regressor,r^2 will not be decreased.Hence, adj-r^2 is used.
+#If we used all xs then adjR^2 will be 0.9555.
+#If we used all x1,x3,x4 then adjR^2 will be 0.9560.
+#If we used all x1,x2,x3 then adjR^2 will be 0.9269.
+
+#d:
+
+
+library(MASS)
+Null = lm(y ~ 1, Job.model.data)
+addterm(Null, scope = full.model, test="F")
+#x3 has the smallest p-value 1.264e-09.
+NewMod = update( Null, .~. + x3)
+addterm( NewMod, scope = full.model, test="F" )
+#model with x3 and x1 has the smallest p-value 1.578e-06.
+NewMod = update( NewMod, .~. + x1)
+dropterm(NewMod , test = "F")
+
+addterm( NewMod, scope = full.model, test="F" )
+
+
+NewMod = update( NewMod, .~. + x4)
+dropterm( NewMod, test = "F" )
+
+addterm( NewMod, scope = full.model, test="F" )
+#Also, a test is given to see if x3 or x1 should be dtropped. Since both of their p-value > 0.10, they are both retained.
+#Lastly,  x2 is not significant to be included (0.4038 < 0.05). Thus it is removed from the model.
+
+
+#e:
+
+#The model evaluated using the forward stepwise regression shows the same result with c part.
+#y ~ x3 + x1 + x4
+
+
+#f:
+
+library(MASS)
+library(olsrr)
+library(leaps)
+library(DAAG)
+#for the full model:
+ols_step_all_possible(full.model)   #to find Rsquare, Adjust Rsquare and Mallow' Cp 
+#As can be seen from the result,
+#model with x1, x3 has  0.9329956 adjR^2 and 17.112978 Cp. According to cp criteria,it is not significant.
+#model with x1,x3, x4 has 0.9615422 adjR^2  and  3.727399 Cp.It has the smallest Cp value.
+#model with x1, x2,x3, x4 has 0.9628918 adjR^2 and 5.000000 Cp.
+
+
+
+k <- ols_step_all_possible(full.model)
+plot(k)
+
+
+
+#for the last model
+
+
+last.model <- lm(y ~ x3 + x1 + x4, Job.model.data)
+summary(last.model)
+
+
+PRESS <- sum((last.model$residuals/(1-hatvalues(last.model)))^2)
+PRESS
+
+SST <- sum((Job.model.data$y - mean(Job.model.data$y))^2)
+SST
+1 - PRESS/SST
+
+deviance(last.model)/last.model$df.residual
+
+#g:
+
+head(Job.validation.data )
+
+
+num.association.2 <- cor(Job.validation.data[,c(1,2,3,4)])
+num.association.2
+num.association
+
+#There is no significant difference.
+
+
+
+#h:
+
+
+bestm.Job.model.data <- lm(y ~ x1+x3+x4, Job.validation.data)
+bestm.Job.validation.data <- lm(y ~ x1+x3+x4, Job.validation.data)
+data.frame(model_building_set_param_est=summary(bestm.Job.model.data)$coefficients[,1],
+           validation_set_param_est=summary(bestm.Job.validation.data)$coefficients[,1],
+           model_building_set_se_est=summary(bestm.Job.model.data)$coefficients[,2],
+           validation_set_se_est=summary(bestm.Job.validation.data)$coefficients[,2])
+
+
+
+
+#deviance:
+deviance(bestm.Job.model.data)/bestm.Job.validation.data$df.residual
+
+summary(bestm.Job.model.data)$r.squared
+summary(bestm.Job.validation.data)$r.squared
+#they are equal.
+
+
+
+#i:
+
+
+predicted <- predict(bestm.Job.model.data, Job.validation.data)
+mean((Job.validation.data$y - predicted)^2)
+
+
+#j:
+
+
+tain.test<- rbind(Job.model.data, Job.validation.data)
+bm <-lm(y ~ x1+x3+x4, tain.test)
+
+data.frame(model_building_set_param_est=summary(bestm.Job.model.data)$coefficients[,1],
+           comb_set_param_est=summary(bm)$coefficients[,1],
+           model_building_set_se_est=summary(bestm.Job.validation.data)$coefficients[,2],
+           comb_set_se_est=summary(bm)$coefficients[,2])
+
+
+
+
+
+
+
+```
+
